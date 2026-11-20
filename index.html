@@ -26,6 +26,10 @@
     const button = document.querySelector("button");
     const topics = { delivery: "Доставка", pricing: "Цена", other: "Другое" };
     const manualReview = "Нужен ручной разбор. Прочитайте заявку и подготовьте ответ самостоятельно.";
+    // Native required validation prevents submit when the field is empty.
+    message.addEventListener("invalid", () => {
+      result.textContent = "Введите текст заявки.";
+    });
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!message.value.trim()) {

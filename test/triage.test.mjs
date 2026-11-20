@@ -89,7 +89,7 @@ function page(fetchReply) {
   const nodes = {
     form: { addEventListener: (_, handler) => { submit = handler; } },
     "#result": { textContent: "" },
-    "#message": { value: "Когда доставка?" },
+    "#message": Object.assign(new EventTarget(), { value: "Когда доставка?" }),
     button: { disabled: false },
   };
   runInNewContext(script, {
@@ -97,7 +97,18 @@ function page(fetchReply) {
     fetch: fetchReply,
     AbortSignal,
   });
-  return { nodes, submit: () => submit({ preventDefault() {} }) };
+  return {
+    nodes,
+    submit: () => submit({ preventDefault() {} }),
+    // Model native required validation: invalid fires instead of submit.
+    requestSubmit: () => {
+      if (nodes["#message"].value === "") {
+        nodes["#message"].dispatchEvent(new Event("invalid", { cancelable: true }));
+        return;
+      }
+      return submit({ preventDefault() {} });
+    },
+  };
 }
 for (const failure of ["manual_review", "network", "invalid-json", "http-error", "bad-ready"]) {
   test(`page clears previous draft on ${failure}`, async () => {
@@ -131,4 +142,24 @@ test("page rejects whitespace without an API request and clears draft", async ()
   ui.nodes["#result"].textContent = "Previous draft";
   await ui.submit();
   assert.equal(ui.nodes["#result"].textContent, "Введите текст заявки.");
+});
+
+test("page clears a successful draft when required validation blocks empty input", async () => {
+  assert.match(html, /<textarea\b[^>]*\bid="message"[^>]*\brequired\b/);
+  let calls = 0;
+  const ui = page(async () => {
+    calls++;
+    return { ok: true, status: 200, json: async () => ({
+      status: "ready", topic: "delivery", draft: "Previous draft",
+    }) };
+  });
+  await ui.requestSubmit();
+  assert.match(ui.nodes["#result"].textContent, /Previous draft/);
+
+  ui.nodes["#message"].value = "";
+  await ui.requestSubmit();
+
+  assert.equal(calls, 1, "empty input must not make another API request");
+  assert.equal(ui.nodes["#result"].textContent, "Введите текст заявки.");
+  assert.equal(ui.nodes.button.disabled, false);
 });
